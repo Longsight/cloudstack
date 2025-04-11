@@ -26,6 +26,8 @@ class CsApp:
         self.ip = ip.get_ip_address()
         self.gateway = ip.get_gateway()
         self.type = ip.get_type()
+        self.nft_ipv4_acl = ip.nft_ipv4_acl
+        self.nft_ipv6_acl = ip.nft_ipv6_acl
         self.fw = ip.fw
         self.config = ip.config
 
@@ -84,17 +86,44 @@ class CsDnsmasq(CsApp):
     def add_firewall_rules(self):
         """ Add the necessary firewall rules
         """
-        self.fw.append(["", "front",
-                        "-A INPUT -i %s -p udp -m udp --dport 67 -j ACCEPT" % self.dev
-                        ])
+        if self.config.is_vpc() and self.config.is_routed():
+            if self.type == 'guest':
+                self.nft_ipv4_acl.append({
+                    'type': "", 'chain': 'INPUT',
+                    'rule': 'iifname %s udp dport 67 accept' % (self.dev)
+                })
 
-        if self.config.has_dns():
-            self.fw.append([
-                "", "front",
-                "-A INPUT -i %s -d %s/32 -p udp -m udp --dport 53 -j ACCEPT" % (self.dev, self.ip)
-            ])
+            if self.config.has_dns():
+                self.nft_ipv4_acl.append({
+                    'type': "", 'chain': 'INPUT',
+                    'rule': 'iifname %s udp dport 53 accept' % (self.dev)
+                })
+                self.nft_ipv4_acl.append({
+                    'type': "", 'chain': 'INPUT',
+                    'rule': 'iifname %s tcp dport 53 accept' % (self.dev)
+                })
+                self.nft_ipv6_acl.append({
+                    'type': "", 'chain': 'acl_input',
+                    'rule': 'iifname %s udp dport 53 accept' % (self.dev)
+                })
+                self.nft_ipv6_acl.append({
+                    'type': "", 'chain': 'acl_input',
+                    'rule': 'iifname %s tcp dport 53 accept' % (self.dev)
+                })
 
-            self.fw.append([
-                "", "front",
-                "-A INPUT -i %s -d %s/32 -p tcp -m tcp --dport 53 -j ACCEPT" % (self.dev, self.ip)
-            ])
+        else:
+            if self.type == 'guest':
+                self.fw.append(["", "front",
+                                "-A INPUT -i %s -p udp -m udp --dport 67 -j ACCEPT" % self.dev
+                                ])
+
+            if self.config.has_dns():
+                self.fw.append([
+                    "", "front",
+                    "-A INPUT -i %s -d %s/32 -p udp -m udp --dport 53 -j ACCEPT" % (self.dev, self.ip)
+                ])
+
+                self.fw.append([
+                    "", "front",
+                    "-A INPUT -i %s -d %s/32 -p tcp -m tcp --dport 53 -j ACCEPT" % (self.dev, self.ip)
+                ])

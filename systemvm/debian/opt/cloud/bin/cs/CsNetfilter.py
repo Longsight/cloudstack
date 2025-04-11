@@ -297,7 +297,8 @@ class CsNetfilters(object):
             table = 'ip6_acl'
             default_chains = [
                 {"chain": "acl_input", "hook": "input", "action": "drop"},
-                {"chain": "acl_forward", "hook": "forward", "action": "accept"}
+                {"chain": "acl_forward", "hook": "forward", "action": "accept"},
+                {"chain": "acl_output", "hook": "output", "action": "accept"}
             ]
         CsHelper.execute("nft add table %s %s" % (address_family, table))
         for chain in default_chains:

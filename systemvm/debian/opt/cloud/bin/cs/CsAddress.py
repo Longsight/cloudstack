@@ -310,6 +310,8 @@ class CsIP:
         self.config = config
         self.nft_ipv4_fw = config.get_nft_ipv4_fw()
         self.nft_ipv4_acl = config.get_nft_ipv4_acl()
+        self.nft_ipv6_acl = config.get_nft_ipv6_acl()
+
 
     def setAddress(self, address):
         self.address = address
@@ -680,6 +682,8 @@ class CsIP:
                                   'rule': "iifname lo counter accept"})
         self.nft_ipv4_acl.append({'type': "", 'chain': 'INPUT',
                                   'rule': "iifname eth1 ct state related,established counter accept"})
+        self.nft_ipv6_acl.append({'type': "", 'chain': 'acl_input',
+                                  'rule': "iifname eth1 ct state related,established counter accept"})
 
         if self.get_type() in ["guest"]:
             guestNetworkCidr = self.address['network']
@@ -701,6 +705,8 @@ class CsIP:
             # Add default rules for FORWARD chain for VPC tiers
             self.nft_ipv4_acl.append({'type': "", 'chain': 'FORWARD',
                                       'rule': "oifname %s ip daddr %s ct state related,established counter accept" % (self.dev, guestNetworkCidr)})
+            self.nft_ipv4_acl.append({'type': "", 'chain': 'FORWARD',
+                                      'rule': "iifname %s ip saddr %s ct state related,established counter accept" % (self.dev, guestNetworkCidr)})
             self.nft_ipv4_acl.append({'type': "", 'chain': 'FORWARD',
                                       'rule': "iifname %s oifname %s ct state new counter accept" % (self.dev, self.dev)})
             self.nft_ipv4_acl.append({'type': "", 'chain': 'FORWARD',
@@ -794,16 +800,24 @@ class CsIP:
                     elif method == "delete":
                         CsPasswdSvc(self.get_gateway() + "," + self.address['public_ip']).stop()
 
-        if self.get_type() == "public" and self.config.is_vpc() and method == "add" and not self.config.is_routed():
-            if self.address["source_nat"]:
-                vpccidr = cmdline.get_vpccidr()
-                self.fw.append(
-                    ["filter", 3, "-A FORWARD -s %s ! -d %s -j ACCEPT" % (vpccidr, vpccidr)])
-                self.fw.append(
-                    ["nat", "", "-A POSTROUTING -j SNAT -o %s --to-source %s" % (self.dev, self.address['public_ip'])])
-            elif cmdline.get_source_nat_ip() and not self.is_private_gateway():
-                self.fw.append(
-                    ["nat", "", "-A POSTROUTING -j SNAT -o %s --to-source %s" % (self.dev, cmdline.get_source_nat_ip())])
+        if self.get_type() == "public":
+            if (self.config.has_dns() or self.config.is_dhcp()) and self.config.expose_dns():
+                logging.info("Making dns publicly available")
+                dns = CsDnsmasq(self)
+                dns.add_firewall_rules()
+            else:
+                logging.info("Not making dns publicly available")
+
+            if self.config.is_vpc() and method == "add" and not self.config.is_routed():
+                if self.address["source_nat"]:
+                    vpccidr = cmdline.get_vpccidr()
+                    self.fw.append(
+                        ["filter", 3, "-A FORWARD -s %s ! -d %s -j ACCEPT" % (vpccidr, vpccidr)])
+                    self.fw.append(
+                        ["nat", "", "-A POSTROUTING -j SNAT -o %s --to-source %s" % (self.dev, self.address['public_ip'])])
+                elif cmdline.get_source_nat_ip() and not self.is_private_gateway():
+                    self.fw.append(
+                        ["nat", "", "-A POSTROUTING -j SNAT -o %s --to-source %s" % (self.dev, cmdline.get_source_nat_ip())])
 
     def list(self):
         self.iplist = {}

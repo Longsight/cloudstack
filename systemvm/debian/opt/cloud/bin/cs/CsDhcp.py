@@ -147,6 +147,9 @@ class CsDhcp(CsDataBag):
                 self.add_host(ip, "%s data-server" % CsHelper.get_hostname())
             idx += 1
 
+        if self.config.expose_dns() and self.config.is_vpc() and self.cl.get_source_nat_ip():
+            listen_address.append(self.cl.get_source_nat_ip().split('/')[0])
+
         # Listen Address
         sline = "listen-address="
         line = "listen-address=%s" % (','.join(listen_address))
